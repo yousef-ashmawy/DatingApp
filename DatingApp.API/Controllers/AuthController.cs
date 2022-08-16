@@ -1,5 +1,8 @@
+using System.ComponentModel;
+using System.Security.Claims;
 using System.Net;
 using System;
+using System.Text;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -8,6 +11,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using DatingApp.API.Models;
 using DatingApp.API.Data;
+using DatingApp.API.Dtos;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Configuration;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace DatingApp.API.Controllers
 {
@@ -17,29 +24,59 @@ namespace DatingApp.API.Controllers
     {
         private readonly ILogger<AuthController> _logger;
         private readonly IAuthRepository _repo;
+        private readonly IConfiguration _config;
 
-        public AuthController(ILogger<AuthController> logger, IAuthRepository repo)
+        public AuthController(ILogger<AuthController> logger, IAuthRepository repo, IConfiguration config)
         {
+            _config = config;
             _repo = repo;
             _logger = logger;
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register(string username, string password)
+        public async Task<IActionResult> Register(UserForRegisterDtos user)
         {
-            username = username.ToLower();
-
-            if(await _repo.UserExist(username))
+            if(await _repo.UserExist(user.UserName.ToLower()))
                 return BadRequest("User Aleardy Exist");
 
             var userToCreate = new User
             {
-                UserName = username
+                UserName = user.UserName
             };
 
-            var CreatedUser = await _repo.Register(userToCreate, password);
+            var CreatedUser = await _repo.Register(userToCreate, user.Password);
 
             return StatusCode(201);
+        }
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login(UserForRegisterDtos user)
+        {
+            var userFromRepo = await _repo.Login(user.UserName, user.Password);
+
+            if(userFromRepo == null)
+                return Unauthorized();
+
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, userFromRepo.Id.ToString()),
+                new Claim(ClaimTypes.Name, userFromRepo.UserName)
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config.GetSection("AppSettings:Token").Value));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256Signature);
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.Now.AddDays(1),
+                SigningCredentials = creds
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            return Ok(new {
+                token = tokenHandler.WriteToken(token)
+            });
         }
     }
 }
