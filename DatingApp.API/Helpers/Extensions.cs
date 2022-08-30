@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Net;
 using System;
 using System.Collections.Generic;
@@ -16,5 +17,13 @@ namespace DatingApp.API.Helpers
             response.Headers.Add("Access-Control-Allow-Origin", "*");
         }
         
+        public static int CalcAge(this DateTime theDateTime)
+        {
+            var age = DateTime.Today.Year - theDateTime.Year;
+            if(theDateTime.AddYears(age) > DateTime.Today)
+                age--;
+            
+            return age;
+        }
     }
 }
